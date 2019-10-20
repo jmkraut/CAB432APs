@@ -3,19 +3,17 @@ const express = require('express');
 const responseTime = require('response-time')
 const axios = require('axios');
 const redis = require('redis');
-
 const app = express();
 const AWS = require('aws-sdk');
 
 const bucketname = 'qqq-wikipedia-store';
-
 const bucketPromise = new AWS.S3({apiVersion: '2006-03-01'}).createBucket({Bucket: bucketname}).promise();
 
 bucketPromise.then(function(data){
   console.log("Successfully created " + bucketname);
 })
 .catch(function(err){
-  console.err(err, err.stack);
+  console.error(err, err.stack);
 })
 
 // create and connect redis client to local instance.
@@ -37,47 +35,40 @@ app.get('/api/search', (req, res) => {
   // Build the Wikipedia API url
   const searchUrl = `https://en.wikipedia.org/w/api.php?action=parse&format=json&section=0&page=${query}`;
   const key = `wikipedia:${query}`;
+  const s3key = `wikipedia-${query}`;
 
   // Try fetching the result from Redis first in case we have it cached
   return redisClient.get(key, (err, result) => {
-    // If that key existss in Redis store
+    // If that key exists in Redis store
+    // serve the result from redis.
     if (result) {
-      console.log(result);
       const resultJSON = JSON.parse(result);
       return res.status(200).json({source: 'Redis Cache', ...resultJSON});
     }
-    else if(!result){
-      const params = {Bucket: bucketname, Key: key}
-      //Check S3 bucket to see if 
+    else if (!result) {
+      const params = {Bucket: bucketname, Key: s3key}
+      //Fetch from S3 bucket if it exists
       return new AWS.S3({apiVersion: '2006-03-01'}).getObject(params, (err, result) => {
         if(result){
           //Serve from S3
-          console.log(result);
-          const resultJSON = JSON.parse(result.body)
-          return res.status(200).json({ source: 'S3 Bucket', ...resultJSON, });
+          const resultJSON = JSON.parse(result.Body);
+          return res.status(200).json({source: 'S3 Bucket', ...resultJSON});
         } else {
+          //Retrieve from wikipedia API and then store in S3 and redis.
           return axios.get(searchUrl)
-          .then(response => {
-            const responseJSON = response.data;
-            const body = JSON.stringify({source: ''})
-          })
+            .then(response => {
+              const responseJSON = response.data;
+              redisClient.setex(key, 10, JSON.stringify({source: 'Redis Cache', ...responseJSON}));
+              console.log("Stored in REDIS");
+              const body = JSON.stringify({source: 'S3 Bucket', ...responseJSON});
+              const objectParams = {Bucket: bucketname, Key: s3key, Body: body};
+              new AWS.S3({ apiVersion: '2006-03-01' }).putObject(objectParams).promise();
+              console.log("Stored in S3");
+              return res.status(200).json({source: 'Wikipedia API', ...responseJSON})
+            })
         }
       })
     }
-        // Key does not exist in Redis store or S3 bucket
-        // Fetch directly from Wikipedia API
-      return axios.get(searchUrl)
-      .then(response => {
-        const responseJSON = response.data;
-        // Save the Wikipedia API response in Redis store
-        redisClient.setex(redisKey, 3600, JSON.stringify({ source: 'Redis Cache', ...responseJSON, }));
-        // Send JSON response to redisClient
-        return res.status(200).json({ source: 'Wikipedia API', ...responseJSON, });
-      })
-      .catch(err => {
-        return res.json(err);
-      });
-    
   });
 });
 
