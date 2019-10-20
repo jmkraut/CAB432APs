@@ -43,6 +43,7 @@ app.get('/api/search', (req, res) => {
     // serve the result from redis.
     if (result) {
       const resultJSON = JSON.parse(result);
+      console.log("Served from Redis")
       return res.status(200).json({source: 'Redis Cache', ...resultJSON});
     }
     else if (!result) {
@@ -50,20 +51,21 @@ app.get('/api/search', (req, res) => {
       //Fetch from S3 bucket if it exists
       return new AWS.S3({apiVersion: '2006-03-01'}).getObject(params, (err, result) => {
         if(result){
-          //Serve from S3
+          //Serve from S3 and store in Redis
           const resultJSON = JSON.parse(result.Body);
-          return res.status(200).json({source: 'S3 Bucket', ...resultJSON});
+          redisClient.setex(key, 10, JSON.stringify({source: 'Redis Cache', ...resultJSON}));
+          console.log("Served from S3")
+          return res.status(200).json({source: "S3 Bucket", ...resultJSON});
         } else {
           //Retrieve from wikipedia API and then store in S3 and redis.
           return axios.get(searchUrl)
             .then(response => {
               const responseJSON = response.data;
               redisClient.setex(key, 10, JSON.stringify({source: 'Redis Cache', ...responseJSON}));
-              console.log("Stored in REDIS");
-              const body = JSON.stringify({source: 'S3 Bucket', ...responseJSON});
+              const body = JSON.stringify({...responseJSON});
               const objectParams = {Bucket: bucketname, Key: s3key, Body: body};
               new AWS.S3({ apiVersion: '2006-03-01' }).putObject(objectParams).promise();
-              console.log("Stored in S3");
+              console.log("Served from Wikipedia API");
               return res.status(200).json({source: 'Wikipedia API', ...responseJSON})
             })
         }
