@@ -40,15 +40,32 @@ app.get('/api/search', (req, res) => {
 
   // Try fetching the result from Redis first in case we have it cached
   return redisClient.get(key, (err, result) => {
-    // If that key exist in Redis store
+    // If that key existss in Redis store
     if (result) {
+      console.log(result);
       const resultJSON = JSON.parse(result);
       return res.status(200).json({source: 'Redis Cache', ...resultJSON});
     }
     else if(!result){
-        // Key does not exist in Redis store
+      const params = {Bucket: bucketname, Key: key}
+      //Check S3 bucket to see if 
+      return new AWS.S3({apiVersion: '2006-03-01'}).getObject(params, (err, result) => {
+        if(result){
+          //Serve from S3
+          console.log(result);
+          const resultJSON = JSON.parse(result.body)
+          return res.status(200).json({ source: 'S3 Bucket', ...resultJSON, });
+        } else {
+          return axios.get(searchUrl)
+          .then(response => {
+            const responseJSON = response.data;
+            const body = JSON.stringify({source: ''})
+          })
+        }
+      })
+    }
+        // Key does not exist in Redis store or S3 bucket
         // Fetch directly from Wikipedia API
-    } else {
       return axios.get(searchUrl)
       .then(response => {
         const responseJSON = response.data;
@@ -60,7 +77,7 @@ app.get('/api/search', (req, res) => {
       .catch(err => {
         return res.json(err);
       });
-    }
+    
   });
 });
 
