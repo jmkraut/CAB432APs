@@ -54,7 +54,6 @@ app.get('/api/search', (req, res) => {
           //Serve from S3 and store in Redis
           const resultJSON = JSON.parse(result.Body);
           redisClient.setex(key, 10, JSON.stringify({source: 'Redis Cache', ...resultJSON}));
-          console.log("Served from S3")
           return res.status(200).json({source: "S3 Bucket", ...resultJSON});
         } else {
           //Retrieve from wikipedia API and then store in S3 and redis.
@@ -87,13 +86,13 @@ app.get('/api/store', (req, res) => {
       if(result){
         console.log(result);
         const resultJSON = JSON.parse(result.Body);
-        return res.status(200).json(resultJSON);
+        return res.status(200).json({source: "S3 Bucket", ...resultJSON});
       }
       else{
         return axios.get(searchUrl)
         .then(response => {
           const responseJSON = response.data;
-          const body = JSON.stringify({source: 'S3 Bucket', ...responseJSON});
+          const body = JSON.stringify({...responseJSON});
           const objectParams = {Bucket: bucketname, Key: s3key, Body: body};
           const uploadPromise = new AWS.S3({apiVersion: '2006-03-01'}).putObject(objectParams).promise();
 
