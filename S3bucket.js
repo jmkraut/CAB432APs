@@ -1,7 +1,7 @@
 const AWS = require('aws-sdk');
 
-const bucketname = 'aaa-wikipedia-store';
-const key = "doge";
+const bucketname = '*';
+const key = "*";
 const s3key = `wikipedia-${key}`;
 
 const bucketPromise = new AWS.S3({apiVersion: '2006-03-01'}).createBucket({Bucket: bucketname}).promise();
