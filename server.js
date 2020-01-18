@@ -6,7 +6,7 @@ const redis = require('redis');
 const app = express();
 const AWS = require('aws-sdk');
 
-const bucketname = 'qqq-wikipedia-store';
+const bucketname = '*';
 const bucketPromise = new AWS.S3({apiVersion: '2006-03-01'}).createBucket({Bucket: bucketname}).promise();
 
 bucketPromise.then(function(data){
